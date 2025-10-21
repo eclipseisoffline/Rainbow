@@ -50,7 +50,7 @@ public final class PackManager {
         BedrockPack pack = BedrockPack.builder(name, packDirectory.resolve(MAPPINGS_FILE), packDirectory.resolve(PACK_DIRECTORY),
                         new MinecraftPackSerializer(Minecraft.getInstance()), new MinecraftAssetResolver(Minecraft.getInstance()))
                 .withPackZipFile(packDirectory.resolve(PACK_ZIP_FILE))
-                .withGeometryRenderer(MinecraftGeometryRenderer.INSTANCE)
+                //.withGeometryRenderer(MinecraftGeometryRenderer.INSTANCE)
                 .reportSuccesses()
                 .build();
         currentPack = Optional.of(pack);
@@ -69,12 +69,17 @@ public final class PackManager {
     }
 
     public boolean finish(Runnable onFinish) {
+        Rainbow.LOGGER.info("Finishing pack");
         currentPack.map(pack -> {
+            Rainbow.LOGGER.info(createPackSummary(pack));
+            Rainbow.LOGGER.info("Writing report file");
             RainbowIO.safeIO(() -> Files.writeString(getExportPath().orElseThrow().resolve(REPORT_FILE), createPackSummary(pack)));
+            Rainbow.LOGGER.info("Calling .save();");
             return pack.save();
         }).ifPresent(future -> future.thenRun(onFinish));
         boolean wasPresent = currentPack.isPresent();
         currentPack = Optional.empty();
+        Rainbow.LOGGER.info("Pack was present: " + wasPresent);
         return wasPresent;
     }
 

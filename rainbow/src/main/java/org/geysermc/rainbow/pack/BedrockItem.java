@@ -19,7 +19,9 @@ public record BedrockItem(ResourceLocation identifier, String textureName, Bedro
 
     public CompletableFuture<?> save(PackSerializer serializer, Path attachableDirectory, Path geometryDirectory, Path animationDirectory,
                                      Function<TextureHolder, CompletableFuture<?>> textureSaver) {
+        Rainbow.LOGGER.info("Saving bedrock item " + identifier);
         List<TextureHolder> attachableTextures = new ArrayList<>();
+        Rainbow.LOGGER.info("Creating attachable");
         Optional<BedrockAttachable> createdAttachable = attachableCreator.create(identifier, attachableTextures::add);
         return CompletableFuture.allOf(
                 textureSaver.apply(geometryContext.icon()),

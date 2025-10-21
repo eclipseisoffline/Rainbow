@@ -120,12 +120,16 @@ public class BedrockPack {
     public CompletableFuture<?> save() {
         List<CompletableFuture<?>> futures = new ArrayList<>();
 
+        Rainbow.LOGGER.info("Saving Geyser mappings");
         futures.add(serializer.saveJson(GeyserMappings.CODEC, context.mappings(), paths.mappings()));
+        Rainbow.LOGGER.info("Saving pack manifest");
         manifest.ifPresent(manifest -> futures.add(serializer.saveJson(PackManifest.CODEC, manifest, paths.manifest())));
+        Rainbow.LOGGER.info("Saving item texture atlas");
         futures.add(serializer.saveJson(BedrockTextureAtlas.CODEC, BedrockTextureAtlas.itemAtlas(name, itemTextures), paths.itemAtlas()));
 
         Function<TextureHolder, CompletableFuture<?>> textureSaver = texture -> {
             ResourceLocation textureLocation = Rainbow.decorateTextureLocation(texture.location());
+            Rainbow.LOGGER.info("Saving texture " + textureLocation);
             return texture.save(context.assetResolver(), serializer, paths.packRoot().resolve(textureLocation.getPath()), reporter);
         };
 
@@ -141,6 +145,7 @@ public class BedrockPack {
 
         CompletableFuture<?> packSerializingFinished = CompletableFuture.allOf(futures.toArray(CompletableFuture[]::new));
         if (paths.zipOutput().isPresent()) {
+            Rainbow.LOGGER.info("Queueing pack ZIP task");
             return packSerializingFinished.thenAcceptAsync(object -> RainbowIO.safeIO(() -> CodecUtil.tryZipDirectory(paths.packRoot(), paths.zipOutput().get())));
         }
         return packSerializingFinished;
