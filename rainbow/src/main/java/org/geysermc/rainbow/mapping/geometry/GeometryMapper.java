@@ -1,7 +1,6 @@
 package org.geysermc.rainbow.mapping.geometry;
 
 import com.mojang.math.Transformation;
-import net.minecraft.client.resources.model.ResolvedModel;
 import net.minecraft.client.resources.model.cuboid.CuboidFace;
 import net.minecraft.client.resources.model.cuboid.CuboidModelElement;
 import net.minecraft.client.resources.model.cuboid.CuboidRotation;
@@ -19,33 +18,34 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 public class GeometryMapper {
     private static final Vector3fc CENTRE_OFFSET = new Vector3f(8.0F, 0.0F, 8.0F);
 
-    public static BedrockGeometry mapGeometry(String identifier, String boneName, ResolvedModel model, Transformation transformation, ModelTextures textures) {
-        UnbakedGeometry top = model.getTopGeometry();
+    public static Optional<BedrockGeometry.GeometryDefinition> mapGeometry(String identifier, String boneName, ModelContext context) {
+        UnbakedGeometry top = context.model().getTopGeometry();
         if (top == UnbakedGeometry.EMPTY) {
-            return BedrockGeometry.EMPTY;
+            return Optional.empty();
         }
 
-        BedrockGeometry.Builder builder = BedrockGeometry.builder(identifier);
+        BedrockGeometry.GeometryDefinition.Builder builder = BedrockGeometry.definition(identifier);
         // Blockbench seems to always use these values TODO that's wrong
         builder.withVisibleBoundsWidth(4.0F);
         builder.withVisibleBoundsHeight(4.0F);
         builder.withVisibleBoundsOffset(new Vector3f(0.0F, 0.75F, 0.0F));
 
-        builder.withTextureWidth(textures.width());
-        builder.withTextureHeight(textures.height());
+        builder.withTextureWidth(context.textures().width());
+        builder.withTextureHeight(context.textures().height());
 
         BedrockGeometry.Bone.Builder bone = BedrockGeometry.bone(boneName);
 
         Vector3f min = new Vector3f(Float.MAX_VALUE);
         Vector3f max = new Vector3f(Float.MIN_VALUE);
 
-        UnbakedCuboidGeometry geometry = transformGeometry((UnbakedCuboidGeometry) top, transformation);
+        UnbakedCuboidGeometry geometry = transformGeometry((UnbakedCuboidGeometry) top, context.transformation());
         for (CuboidModelElement element : geometry.elements()) {
-            BedrockGeometry.Cube cube = mapCuboidModelElement(element, textures).build();
+            BedrockGeometry.Cube cube = mapCuboidModelElement(element, context.textures()).build();
             bone.withCube(cube);
             min.min(cube.origin());
             max.max(cube.origin().add(cube.size(), new Vector3f()));
@@ -57,7 +57,7 @@ public class GeometryMapper {
 
         // Bind to the bone of the current item slot
         bone.withBinding("q.item_slot_to_bone_name(context.item_slot)");
-        return builder.withBone(bone).build();
+        return Optional.of(builder.withBone(bone).build());
     }
 
     // After hours of painfully suffering and 40 test builds of Rainbow, I finally got the right formula together and somehow made this mess of a code

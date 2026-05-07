@@ -6,20 +6,17 @@ import com.mojang.serialization.MapCodec;
 import com.mojang.serialization.codecs.RecordCodecBuilder;
 import net.minecraft.core.Direction;
 import net.minecraft.util.ExtraCodecs;
-import org.geysermc.rainbow.mapping.PackSerializer;
 import org.geysermc.rainbow.pack.BedrockVersion;
 import org.joml.Vector2fc;
 import org.joml.Vector3f;
 import org.joml.Vector3fc;
 
-import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.concurrent.CompletableFuture;
 
 public record BedrockGeometry(BedrockVersion formatVersion, List<GeometryDefinition> definitions) {
     public static final BedrockVersion FORMAT_VERSION = BedrockVersion.of(1, 21, 0);
@@ -35,16 +32,16 @@ public record BedrockGeometry(BedrockVersion formatVersion, List<GeometryDefinit
 
     public static final BedrockGeometry EMPTY = new BedrockGeometry(FORMAT_VERSION, List.of());
 
-    public CompletableFuture<?> save(PackSerializer serializer, Path geometryDirectory) {
-        return serializer.saveJson(CODEC, this, geometryDirectory.resolve(definitions.getFirst().info.identifier + ".geo.json"));
-    }
-
     public static BedrockGeometry of(GeometryDefinition... definitions) {
-        return new BedrockGeometry(FORMAT_VERSION, Arrays.asList(definitions));
+        return of(Arrays.asList(definitions));
     }
 
-    public static Builder builder(String identifier) {
-        return new Builder(identifier);
+    public static BedrockGeometry of(List<GeometryDefinition> definitions) {
+        return new BedrockGeometry(FORMAT_VERSION, definitions);
+    }
+
+    public static GeometryDefinition.Builder definition(String identifier) {
+        return new GeometryDefinition.Builder(identifier);
     }
 
     public static Bone.Builder bone(String name) {
@@ -55,63 +52,6 @@ public record BedrockGeometry(BedrockVersion formatVersion, List<GeometryDefinit
         return new Cube.Builder(origin, size);
     }
 
-    public static class Builder {
-        private final String identifier;
-        private final List<Bone> bones = new ArrayList<>();
-
-        private Optional<Float> visibleBoundsWidth = Optional.empty();
-        private Optional<Float> visibleBoundsHeight = Optional.empty();
-        private Optional<Vector3fc> visibleBoundsOffset = Optional.empty();
-        private Optional<Integer> textureWidth = Optional.empty();
-        private Optional<Integer> textureHeight = Optional.empty();
-
-        public Builder(String identifier) {
-            this.identifier = "geometry." + identifier;
-        }
-
-        public Builder withVisibleBoundsWidth(float visibleBoundsWidth) {
-            this.visibleBoundsWidth = Optional.of(visibleBoundsWidth);
-            return this;
-        }
-
-        public Builder withVisibleBoundsHeight(float visibleBoundsHeight) {
-            this.visibleBoundsHeight = Optional.of(visibleBoundsHeight);
-            return this;
-        }
-
-        public Builder withVisibleBoundsOffset(Vector3f visibleBoundsOffset) {
-            this.visibleBoundsOffset = Optional.of(visibleBoundsOffset);
-            return this;
-        }
-
-        public Builder withTextureWidth(int textureWidth) {
-            this.textureWidth = Optional.of(textureWidth);
-            return this;
-        }
-
-        public Builder withTextureHeight(int textureHeight) {
-            this.textureHeight = Optional.of(textureHeight);
-            return this;
-        }
-
-        public Builder withBone(Bone bone) {
-            if (bones.stream().anyMatch(existing -> existing.name.equals(bone.name))) {
-                throw new IllegalArgumentException("Duplicate bone with name " + bone.name);
-            }
-            bones.add(bone);
-            return this;
-        }
-
-        public Builder withBone(Bone.Builder builder) {
-            return withBone(builder.build());
-        }
-
-        public BedrockGeometry build() {
-            return BedrockGeometry.of(new GeometryDefinition(
-                    new GeometryInfo(identifier, visibleBoundsWidth, visibleBoundsHeight, visibleBoundsOffset, textureWidth, textureHeight), List.copyOf(bones)));
-        }
-    }
-
     public record GeometryDefinition(GeometryInfo info, List<Bone> bones) {
         public static final Codec<GeometryDefinition> CODEC = RecordCodecBuilder.create(instance ->
                 instance.group(
@@ -119,6 +59,62 @@ public record BedrockGeometry(BedrockVersion formatVersion, List<GeometryDefinit
                         Bone.CODEC.listOf().optionalFieldOf("bones", List.of()).forGetter(GeometryDefinition::bones)
                 ).apply(instance, GeometryDefinition::new)
         );
+
+        public static class Builder {
+            private final String identifier;
+            private final List<Bone> bones = new ArrayList<>();
+
+            private Optional<Float> visibleBoundsWidth = Optional.empty();
+            private Optional<Float> visibleBoundsHeight = Optional.empty();
+            private Optional<Vector3fc> visibleBoundsOffset = Optional.empty();
+            private Optional<Integer> textureWidth = Optional.empty();
+            private Optional<Integer> textureHeight = Optional.empty();
+
+            public Builder(String identifier) {
+                this.identifier = "geometry." + identifier;
+            }
+
+            public Builder withVisibleBoundsWidth(float visibleBoundsWidth) {
+                this.visibleBoundsWidth = Optional.of(visibleBoundsWidth);
+                return this;
+            }
+
+            public Builder withVisibleBoundsHeight(float visibleBoundsHeight) {
+                this.visibleBoundsHeight = Optional.of(visibleBoundsHeight);
+                return this;
+            }
+
+            public Builder withVisibleBoundsOffset(Vector3f visibleBoundsOffset) {
+                this.visibleBoundsOffset = Optional.of(visibleBoundsOffset);
+                return this;
+            }
+
+            public Builder withTextureWidth(int textureWidth) {
+                this.textureWidth = Optional.of(textureWidth);
+                return this;
+            }
+
+            public Builder withTextureHeight(int textureHeight) {
+                this.textureHeight = Optional.of(textureHeight);
+                return this;
+            }
+
+            public Builder withBone(Bone bone) {
+                if (bones.stream().anyMatch(existing -> existing.name.equals(bone.name))) {
+                    throw new IllegalArgumentException("Duplicate bone with name " + bone.name);
+                }
+                bones.add(bone);
+                return this;
+            }
+
+            public Builder withBone(Bone.Builder builder) {
+                return withBone(builder.build());
+            }
+
+            public GeometryDefinition build() {
+                return new GeometryDefinition(new GeometryInfo(identifier, visibleBoundsWidth, visibleBoundsHeight, visibleBoundsOffset, textureWidth, textureHeight), List.copyOf(bones));
+            }
+        }
     }
 
     public record GeometryInfo(String identifier, Optional<Float> visibleBoundsWidth, Optional<Float> visibleBoundsHeight, Optional<Vector3fc> visibleBoundsOffset,

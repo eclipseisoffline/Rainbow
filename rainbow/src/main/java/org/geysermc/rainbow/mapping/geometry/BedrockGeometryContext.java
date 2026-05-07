@@ -1,6 +1,5 @@
 package org.geysermc.rainbow.mapping.geometry;
 
-import com.mojang.math.Transformation;
 import net.minecraft.client.resources.model.ResolvedModel;
 import net.minecraft.client.resources.model.cuboid.UnbakedCuboidGeometry;
 import net.minecraft.resources.Identifier;
@@ -10,7 +9,6 @@ import org.geysermc.rainbow.mapping.PackSerializer;
 import org.geysermc.rainbow.mapping.PackSerializingContext;
 import org.geysermc.rainbow.mapping.animation.AnimationMapper;
 import org.geysermc.rainbow.mapping.animation.BedrockAnimationContext;
-import org.geysermc.rainbow.mapping.texture.ModelTextures;
 
 import java.util.List;
 import java.util.Optional;
@@ -30,23 +28,23 @@ public record BedrockGeometryContext(Optional<MappedGeometry> geometry,
                 .save(context);
     }
 
-    public static BedrockGeometryContext create(Identifier bedrockIdentifier, ResolvedModel model, Transformation definitionTransformation, ModelTextures textures, PackContext context) {
-        boolean isFlatBuiltin = isFlatBuiltin(model);
+    public static BedrockGeometryContext create(Identifier bedrockIdentifier, ModelContext modelContext, PackContext packContext) {
+        boolean isFlatBuiltin = isFlatBuiltin(modelContext.model());
         if (isFlatBuiltin) {
-            model = new FlatBuiltinItemModel(context.assetResolver(), model);
+            modelContext = modelContext.withModel(new FlatBuiltinItemModel(packContext.assetResolver(), modelContext.model()));
         }
 
-        ResolvedModel parentModel = model.parent();
-        boolean handheld = parentModel != null && HANDHELD_MODELS.contains(Rainbow.getModelIdentifier(model));
+        ResolvedModel parentModel = modelContext.model().parent();
+        boolean handheld = parentModel != null && HANDHELD_MODELS.contains(Rainbow.getModelIdentifier(modelContext.model()));
 
         Optional<MappedGeometry> geometry = Optional.empty();
         Optional<BedrockAnimationContext> animation = Optional.empty();
 
-        if (textures.requiresAttachable() || !isFlatBuiltin) {
+        if (modelContext.textures().requiresAttachable() || !isFlatBuiltin) {
             // Not flat built-in model, or textures require an attachable (e.g. texture is animated), so map geometry and animation
 
-            geometry = Optional.of(context.geometryCache().mapGeometry(bedrockIdentifier, model, definitionTransformation, textures));
-            animation = Optional.of(AnimationMapper.mapAnimation(Rainbow.bedrockSafeIdentifier(bedrockIdentifier), "bone", model.getTopTransforms()));
+            geometry = packContext.geometryCache().mapGeometry(bedrockIdentifier, modelContext);
+            animation = Optional.of(AnimationMapper.mapAnimation(Rainbow.bedrockSafeIdentifier(bedrockIdentifier), "bone", modelContext.model().getTopTransforms()));
         }
 
         return new BedrockGeometryContext(geometry, animation, handheld);

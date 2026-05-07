@@ -20,11 +20,13 @@ import net.minecraft.client.renderer.item.properties.numeric.Count;
 import net.minecraft.client.renderer.item.properties.numeric.Damage;
 import net.minecraft.client.renderer.item.properties.numeric.RangeSelectItemModelProperties;
 import net.minecraft.client.renderer.item.properties.numeric.RangeSelectItemModelProperty;
+import net.minecraft.client.renderer.item.properties.numeric.UseDuration;
 import net.minecraft.client.renderer.item.properties.select.Charge;
 import net.minecraft.client.renderer.item.properties.select.ContextDimension;
 import net.minecraft.client.renderer.item.properties.select.DisplayContext;
 import net.minecraft.client.renderer.item.properties.select.SelectItemModelProperties;
 import net.minecraft.client.renderer.item.properties.select.TrimMaterialProperty;
+import net.minecraft.client.resources.model.ResolvedModel;
 import net.minecraft.core.component.DataComponents;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.Identifier;
@@ -35,6 +37,7 @@ import net.minecraft.util.ProblemReporter;
 import net.minecraft.world.entity.ai.attributes.AttributeModifier;
 import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.item.CrossbowItem;
+import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemDisplayContext;
 import net.minecraft.world.item.ItemStackTemplate;
 import net.minecraft.world.item.component.ItemAttributeModifiers;
@@ -51,6 +54,7 @@ import org.geysermc.rainbow.definition.predicate.GeyserConditionPredicate;
 import org.geysermc.rainbow.definition.predicate.GeyserMatchPredicate;
 import org.geysermc.rainbow.definition.predicate.GeyserPredicate;
 import org.geysermc.rainbow.definition.predicate.GeyserRangeDispatchPredicate;
+import org.geysermc.rainbow.mapping.geometry.ModelContext;
 import org.geysermc.rainbow.mapping.texture.ModelTextures;
 import org.geysermc.rainbow.mixin.LateBoundIdMapperAccessor;
 import org.geysermc.rainbow.mixin.RangeSelectItemModelAccessor;
@@ -139,11 +143,11 @@ public class BedrockItemMapper {
     private static void mapConditionalModel(ConditionalItemModel.Unbaked model, MappingContext context) {
         ConditionalItemModelProperty property = model.property();
         GeyserConditionPredicate.Property predicateProperty = switch (property) {
-            case Broken ignored -> GeyserConditionPredicate.BROKEN;
-            case Damaged ignored -> GeyserConditionPredicate.DAMAGED;
+            case Broken _ -> GeyserConditionPredicate.BROKEN;
+            case Damaged _ -> GeyserConditionPredicate.DAMAGED;
             case CustomModelDataProperty customModelData -> new GeyserConditionPredicate.CustomModelData(customModelData.index());
             case HasComponent hasComponent -> new GeyserConditionPredicate.HasComponent(hasComponent.componentType()); // ignoreDefault property not a thing, we should look into that in Geyser! TODO
-            case FishingRodCast ignored -> GeyserConditionPredicate.FISHING_ROD_CAST;
+            case FishingRodCast _ -> GeyserConditionPredicate.FISHING_ROD_CAST;
             default -> null;
         };
         ItemModel.Unbaked onTrue = model.onTrue();
@@ -253,24 +257,19 @@ public class BedrockItemMapper {
 
             packContext.assetResolver().getResolvedModel(modelIdentifier)
                     .ifPresentOrElse(itemModel -> {
-                        Identifier bedrockIdentifier;
-                        if (modelIdentifier.getNamespace().equals(Identifier.DEFAULT_NAMESPACE)) {
-                            bedrockIdentifier = Identifier.fromNamespaceAndPath("geyser_mc", modelIdentifier.getPath());
-                        } else {
-                            bedrockIdentifier = modelIdentifier;
-                        }
-
-                        ModelTextures textures = packContext.textureCache().load(itemStack, itemModel, packContext);
-
-                        BedrockGeometryContext geometry = BedrockGeometryContext.create(bedrockIdentifier, itemModel, finaliseTransformation(model.transformation()), textures, packContext);
-                        BedrockAttachableContext attachable = BedrockAttachableContext.create(bedrockIdentifier, itemStack, geometry, textures, packContext);
+                        BaseMapping mapping = BaseMapping.create(this, modelIdentifier, itemModel, finaliseTransformation(model.transformation()));
+                        BedrockAttachableContext attachable = BedrockAttachableContext.create(mapping.bedrockIdentifier, itemStack, mapping.geometry, mapping.textures, packContext);
 
                         if (packContext.reportSuccesses()) {
                             // Not a problem, but just report to get the model printed in the report file
                             report("creating mapping for block model " + modelIdentifier);
                         }
-                        create(bedrockIdentifier, textures, geometry, attachable);
+                        create(mapping.bedrockIdentifier, mapping.textures, mapping.geometry, attachable);
                     }, () -> report("missing block model " + modelIdentifier));
+        }
+
+        public void map(RangeSelectItemModel model, UseDuration durationProperty) {
+
         }
 
         private void create(Identifier bedrockIdentifier, ModelTextures textures, BedrockGeometryContext geometry, BedrockAttachableContext attachable) {
@@ -308,6 +307,22 @@ public class BedrockItemMapper {
                         .sum();
             }
             return 0;
+        }
+    }
+
+    private record BaseMapping(Identifier bedrockIdentifier, ModelTextures textures, BedrockGeometryContext geometry) {
+
+        public static BaseMapping create(MappingContext context, Identifier modelIdentifier, ResolvedModel model, Transformation transformation) {
+            Identifier bedrockIdentifier;
+            if (modelIdentifier.getNamespace().equals(Identifier.DEFAULT_NAMESPACE)) {
+                bedrockIdentifier = Identifier.fromNamespaceAndPath("geyser_mc", modelIdentifier.getPath());
+            } else {
+                bedrockIdentifier = modelIdentifier;
+            }
+
+            ModelTextures textures = context.packContext.textureCache().load(context.itemStack, model, context.packContext);
+            BedrockGeometryContext geometry = BedrockGeometryContext.create(bedrockIdentifier, new ModelContext(model, textures, transformation), context.packContext);
+            return new BaseMapping(bedrockIdentifier, textures, geometry);
         }
     }
 }

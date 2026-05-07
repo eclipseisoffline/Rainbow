@@ -3,6 +3,7 @@ package org.geysermc.rainbow.mapping;
 import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
 
 import java.util.Map;
+import java.util.Optional;
 import java.util.function.Supplier;
 
 public abstract class PackAssetCache<K, V extends PackAssetCache.Cacheable<V>> {
@@ -30,6 +31,19 @@ public abstract class PackAssetCache<K, V extends PackAssetCache.Cacheable<V>> {
         existing = computer.get();
         cache.put(key, existing);
         return existing;
+    }
+
+    protected Optional<V> getOrComputeOptional(K key, Supplier<Optional<V>> computer) {
+        V existing = cache.get(key);
+        if (existing != null) {
+            cacheHits++;
+            return Optional.of(existing.cachedCopy());
+        }
+        return computer.get()
+                .map(computed -> {
+                    cache.put(key, computed);
+                    return computed;
+                });
     }
 
     protected void clear() {

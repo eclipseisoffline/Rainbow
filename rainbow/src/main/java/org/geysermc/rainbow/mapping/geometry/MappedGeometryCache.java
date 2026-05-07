@@ -1,28 +1,29 @@
 package org.geysermc.rainbow.mapping.geometry;
 
 import com.mojang.math.Transformation;
-import net.minecraft.client.resources.model.ResolvedModel;
 import net.minecraft.client.resources.model.geometry.UnbakedGeometry;
 import net.minecraft.resources.Identifier;
 import org.geysermc.rainbow.Rainbow;
 import org.geysermc.rainbow.mapping.PackAssetCache;
-import org.geysermc.rainbow.mapping.texture.ModelTextures;
 import org.geysermc.rainbow.pack.geometry.BedrockGeometry;
+
+import java.util.Optional;
 
 public class MappedGeometryCache extends PackAssetCache<MappedGeometryCache.Key, MappedGeometry> {
 
-    public MappedGeometry mapGeometry(Identifier bedrockIdentifier, ResolvedModel model, Transformation transformation, ModelTextures textures) {
-        return getOrCompute(new Key(model, transformation), () -> {
+    public Optional<MappedGeometry> mapGeometry(Identifier bedrockIdentifier, ModelContext context) {
+        return getOrComputeOptional(new Key(context), () -> {
             String safeIdentifier = Rainbow.bedrockSafeIdentifier(bedrockIdentifier);
-            BedrockGeometry geometry = GeometryMapper.mapGeometry(safeIdentifier, "bone", model, transformation, textures);
-            return new MappedGeometryInstance(geometry);
+            return GeometryMapper.mapGeometry(safeIdentifier, "bone", context)
+                    .map(BedrockGeometry::of)
+                    .map(MappedGeometryInstance::new);
         });
     }
 
     public record Key(UnbakedGeometry geometry, Transformation transformation) {
 
-        public Key(ResolvedModel model, Transformation transformation) {
-            this(model.getTopGeometry(), transformation);
+        public Key(ModelContext context) {
+            this(context.model().getTopGeometry(), context.transformation());
         }
     }
 }
