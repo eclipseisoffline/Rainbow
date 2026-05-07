@@ -4,9 +4,9 @@ import com.mojang.math.Transformation;
 import net.minecraft.client.resources.model.ResolvedModel;
 import org.geysermc.rainbow.mapping.texture.ModelTextures;
 
-public record ModelContext(ResolvedModel model, ModelTextures textures, Transformation transformation) {
+public record ModelContext(ResolvedModel model, ModelTextures textures, Transformation transformation, boolean requiresAttachable) {
 
     public ModelContext withModel(ResolvedModel model) {
-        return new ModelContext(model, textures, transformation);
+        return new ModelContext(model, textures, transformation, requiresAttachable);
     }
 }

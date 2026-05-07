@@ -1,5 +1,6 @@
 package org.geysermc.rainbow.mapping;
 
+import com.mojang.datafixers.util.Pair;
 import com.mojang.math.Transformation;
 import net.minecraft.client.renderer.item.ClientItem;
 import net.minecraft.client.renderer.item.ConditionalItemModel;
@@ -37,7 +38,6 @@ import net.minecraft.util.ProblemReporter;
 import net.minecraft.world.entity.ai.attributes.AttributeModifier;
 import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.item.CrossbowItem;
-import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemDisplayContext;
 import net.minecraft.world.item.ItemStackTemplate;
 import net.minecraft.world.item.component.ItemAttributeModifiers;
@@ -129,9 +129,9 @@ public class BedrockItemMapper {
                     mapBlockModelWrapper(modelWrapper, context.child("plain model " + modelWrapper.model()));
                 }
             }
-            case ConditionalItemModel.Unbaked conditional -> mapConditionalModel(conditional, context.child("condition model "));
-            case RangeSelectItemModel.Unbaked rangeSelect -> mapRangeSelectModel(rangeSelect, context.child("range select model "));
-            case SelectItemModel.Unbaked select -> mapSelectModel(select, context.child("select model "));
+            case ConditionalItemModel.Unbaked conditional -> mapConditionalModel(conditional, context.child("condition model with property " + conditional.property()));
+            case RangeSelectItemModel.Unbaked rangeSelect -> mapRangeSelectModel(rangeSelect, context.child("range select model with property " + rangeSelect.property()));
+            case SelectItemModel.Unbaked select -> mapSelectModel(select, context.child("select model with property " + select.unbakedSwitch().property()));
             default -> context.report("unsupported item model " + getId(ItemModels.ID_MAPPER, model.type()));
         }
     }
@@ -159,12 +159,17 @@ public class BedrockItemMapper {
             return;
         }
 
-        mapItem(onTrue, context.with(new GeyserConditionPredicate(predicateProperty, true), model.transformation(), "condition on true "));
-        mapItem(onFalse, context.with(new GeyserConditionPredicate(predicateProperty, false), model.transformation(), "condition on false "));
+        mapItem(onTrue, context.with(new GeyserConditionPredicate(predicateProperty, true), model.transformation(), "condition on true"));
+        mapItem(onFalse, context.with(new GeyserConditionPredicate(predicateProperty, false), model.transformation(), "condition on false"));
     }
 
     private static void mapRangeSelectModel(RangeSelectItemModel.Unbaked model, MappingContext context) {
         RangeSelectItemModelProperty property = model.property();
+        if (property instanceof UseDuration useDuration) {
+            context.map(model, useDuration);
+            return;
+        }
+
         GeyserRangeDispatchPredicate.Property predicateProperty = switch (property) {
             case BundleFullness ignored -> GeyserRangeDispatchPredicate.BUNDLE_FULLNESS;
             case Count count -> new GeyserRangeDispatchPredicate.Count(count.normalize());
@@ -204,22 +209,22 @@ public class BedrockItemMapper {
                 context.report("unsupported select model property display_context, only mapping \"gui\" case, if it exists");
                 for (SelectItemModel.SwitchCase<?> switchCase : cases) {
                     if (switchCase.values().contains(ItemDisplayContext.GUI)) {
-                        mapItem(switchCase.model(), context.with(model.transformation(), "select GUI display_context case (unsupported property) "));
+                        mapItem(switchCase.model(), context.with(model.transformation(), "select GUI display_context case (unsupported property)"));
                         return;
                     }
                 }
             }
             context.report("unsupported select model property " + getId(SelectItemModelProperties.ID_MAPPER, unbakedSwitch.property().type()) + ", only mapping fallback, if present");
-            model.fallback().ifPresent(fallback -> mapItem(fallback, context.with(model.transformation(), "select fallback case (unsupported property) ")));
+            model.fallback().ifPresent(fallback -> mapItem(fallback, context.with(model.transformation(), "select fallback case (unsupported property)")));
             return;
         }
 
         cases.forEach(switchCase -> {
             switchCase.values().forEach(value -> {
-                mapItem(switchCase.model(), context.with(new GeyserMatchPredicate(dataConstructor.apply(value)), model.transformation(), "select case " + value + " "));
+                mapItem(switchCase.model(), context.with(new GeyserMatchPredicate(dataConstructor.apply(value)), model.transformation(), "select case " + value));
             });
         });
-        model.fallback().ifPresent(fallback -> mapItem(fallback, context.with(model.transformation(), "select fallback case ")));
+        model.fallback().ifPresent(fallback -> mapItem(fallback, context.with(model.transformation(), "select fallback case")));
     }
 
     private record MappingContext(List<GeyserPredicate> predicateStack, Optional<Transformation> transformationStack,
@@ -235,41 +240,55 @@ public class BedrockItemMapper {
         // Only copy ignorePlainModel when there is not a predicate
         public MappingContext with(GeyserPredicate predicate, Optional<Transformation> transformation, String childName) {
             return new MappingContext(Stream.concat(predicateStack.stream(), Stream.of(predicate)).toList(), addTransformation(transformation), itemStack,
-                    reporter.forChild(() -> childName), definitionCreator, packContext, false);
+                    reporter.forChild(() -> childName + " "), definitionCreator, packContext, false);
         }
 
         public MappingContext with(Optional<Transformation> transformation, String childName) {
             return new MappingContext(predicateStack, addTransformation(transformation), itemStack,
-                    reporter.forChild(() -> childName), definitionCreator, packContext, ignorePlainModel);
+                    reporter.forChild(() -> childName + " "), definitionCreator, packContext, ignorePlainModel);
         }
 
         public MappingContext child(String childName)  {
             return new MappingContext(predicateStack, transformationStack, itemStack,
-                    reporter.forChild(() -> childName), definitionCreator, packContext, ignorePlainModel);
+                    reporter.forChild(() -> childName + " "), definitionCreator, packContext, ignorePlainModel);
         }
 
         public Transformation finaliseTransformation(Optional<Transformation> finalTransformation) {
             return addTransformation(finalTransformation).orElse(Transformation.IDENTITY);
         }
 
-        public void map(CuboidItemModelWrapper.Unbaked model) {
+        private Optional<BaseMapping> mapBase(CuboidItemModelWrapper.Unbaked model, boolean requiresAttachable) {
             Identifier modelIdentifier = model.model();
 
-            packContext.assetResolver().getResolvedModel(modelIdentifier)
-                    .ifPresentOrElse(itemModel -> {
-                        BaseMapping mapping = BaseMapping.create(this, modelIdentifier, itemModel, finaliseTransformation(model.transformation()));
-                        BedrockAttachableContext attachable = BedrockAttachableContext.create(mapping.bedrockIdentifier, itemStack, mapping.geometry, mapping.textures, packContext);
+            return packContext.assetResolver().getResolvedModel(modelIdentifier)
+                    .map(itemModel -> BaseMapping.create(this, modelIdentifier, itemModel, finaliseTransformation(model.transformation()), requiresAttachable));
+        }
+
+        public void map(CuboidItemModelWrapper.Unbaked model) {
+            mapBase(model, false)
+                    .ifPresentOrElse(base -> {
+                        BedrockAttachableContext attachable = BedrockAttachableContext.createSingleModel(base.bedrockIdentifier, itemStack, base.geometry, base.textures, packContext);
 
                         if (packContext.reportSuccesses()) {
                             // Not a problem, but just report to get the model printed in the report file
-                            report("creating mapping for block model " + modelIdentifier);
+                            report("creating mapping for block model " + model.model());
                         }
-                        create(mapping.bedrockIdentifier, mapping.textures, mapping.geometry, attachable);
-                    }, () -> report("missing block model " + modelIdentifier));
+                        create(base.bedrockIdentifier, base.textures, base.geometry, attachable);
+                    }, () -> report("missing block model " + model.model()));
         }
 
-        public void map(RangeSelectItemModel model, UseDuration durationProperty) {
-
+        public void map(RangeSelectItemModel.Unbaked model, UseDuration durationProperty) {
+            model.entries().stream()
+                    .sorted(RangeSelectItemModel.Entry.BY_THRESHOLD)
+                    .flatMap(entry -> {
+                        if (entry.model() instanceof CuboidItemModelWrapper.Unbaked wrapper) {
+                            // TODO report missing
+                            // Requiring attachable here because we will always use an attachable to set up the use duration switching
+                            return mapBase(wrapper, true).stream().map(base -> Pair.of(base, entry.threshold()));
+                        }
+                        return Stream.empty();
+                    })
+                    .map(entry -> {});
         }
 
         private void create(Identifier bedrockIdentifier, ModelTextures textures, BedrockGeometryContext geometry, BedrockAttachableContext attachable) {
@@ -312,7 +331,7 @@ public class BedrockItemMapper {
 
     private record BaseMapping(Identifier bedrockIdentifier, ModelTextures textures, BedrockGeometryContext geometry) {
 
-        public static BaseMapping create(MappingContext context, Identifier modelIdentifier, ResolvedModel model, Transformation transformation) {
+        public static BaseMapping create(MappingContext context, Identifier modelIdentifier, ResolvedModel model, Transformation transformation, boolean requiresAttachable) {
             Identifier bedrockIdentifier;
             if (modelIdentifier.getNamespace().equals(Identifier.DEFAULT_NAMESPACE)) {
                 bedrockIdentifier = Identifier.fromNamespaceAndPath("geyser_mc", modelIdentifier.getPath());
@@ -321,7 +340,7 @@ public class BedrockItemMapper {
             }
 
             ModelTextures textures = context.packContext.textureCache().load(context.itemStack, model, context.packContext);
-            BedrockGeometryContext geometry = BedrockGeometryContext.create(bedrockIdentifier, new ModelContext(model, textures, transformation), context.packContext);
+            BedrockGeometryContext geometry = BedrockGeometryContext.create(bedrockIdentifier, new ModelContext(model, textures, transformation, requiresAttachable), context.packContext);
             return new BaseMapping(bedrockIdentifier, textures, geometry);
         }
     }

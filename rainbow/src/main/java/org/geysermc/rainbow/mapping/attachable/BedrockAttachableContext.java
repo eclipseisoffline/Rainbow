@@ -40,7 +40,7 @@ public record BedrockAttachableContext(Optional<BedrockAttachable> attachable, O
                 .save(context);
     }
 
-    public static BedrockAttachableContext create(Identifier identifier, ItemStackTemplate stack, BedrockGeometryContext geometryContext, ModelTextures textures, PackContext context) {
+    public static BedrockAttachableContext createSingleModel(Identifier identifier, ItemStackTemplate stack, BedrockGeometryContext geometryContext, ModelTextures textures, PackContext context) {
         // Prefer equippable over animation or geometry attachable, since when an item is equippable, it shows its 2D icon in first and third person (see notes in AnimationMapper)
         Equippable equippable = stack.get(DataComponents.EQUIPPABLE);
         if (equippable != null) {
