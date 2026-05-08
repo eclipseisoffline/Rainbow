@@ -46,9 +46,13 @@ public interface ModelTextures extends PackAssetCache.Cacheable<ModelTextures>, 
 
     boolean requiresAttachable();
 
-    default BedrockAttachable.Builder applyToAttachable(BedrockAttachable.Builder builder) {
+    default BedrockAttachable.Builder applyToAttachable(BedrockAttachable.Builder builder, String targetPrefix) {
         return builder
-                .withTexture(VanillaAttachableTargets.DEFAULT, icon().getPath());
+                .withTexture(targetPrefix + VanillaAttachableTargets.DEFAULT, icon().getPath());
+    }
+
+    default BedrockAttachable.Builder applyToAttachable(BedrockAttachable.Builder builder) {
+        return applyToAttachable(builder, "");
     }
 
     default Optional<RenderControllerConfiguration> renderControllerConfiguration() {
@@ -129,8 +133,13 @@ public interface ModelTextures extends PackAssetCache.Cacheable<ModelTextures>, 
         }
 
         @Override
-        public BedrockAttachable.Builder applyToAttachable(BedrockAttachable.Builder builder) {
-            return delegate.applyToAttachable(builder);
+        public BedrockAttachable.Builder applyToAttachable(BedrockAttachable.Builder builder, String targetPrefix) {
+            return delegate.applyToAttachable(builder, targetPrefix);
+        }
+
+        @Override
+        public Optional<RenderControllerConfiguration> renderControllerConfiguration() {
+            return delegate.renderControllerConfiguration();
         }
 
         @Override
@@ -200,17 +209,17 @@ public interface ModelTextures extends PackAssetCache.Cacheable<ModelTextures>, 
         }
 
         @Override
-        public BedrockAttachable.Builder applyToAttachable(BedrockAttachable.Builder builder) {
+        public BedrockAttachable.Builder applyToAttachable(BedrockAttachable.Builder builder, String targetPrefix) {
             if (animation.isPresent()) {
                 for (int frame = 0; frame < animation.get().totalFrameCount(); frame++) {
-                    builder.withTexture("frame_" + frame, getFrameIdentifier(frame).getPath());
+                    builder.withTexture(targetPrefix + "frame_" + frame, getFrameIdentifier(frame).getPath());
                 }
                 return builder;
             } else if (!flatBuiltinModel) {
                 // Not flat built-in, so modify attachable similar to StitchedTextures
-                return builder.withTexture(VanillaAttachableTargets.DEFAULT, ModelTextures.getStitchedIdentifier(texture).getPath());
+                return builder.withTexture(targetPrefix + VanillaAttachableTargets.DEFAULT, ModelTextures.getStitchedIdentifier(texture).getPath());
             }
-            return ModelTextures.super.applyToAttachable(builder);
+            return ModelTextures.super.applyToAttachable(builder, targetPrefix);
         }
 
         @Override
@@ -307,9 +316,9 @@ public interface ModelTextures extends PackAssetCache.Cacheable<ModelTextures>, 
         }
 
         @Override
-        public BedrockAttachable.Builder applyToAttachable(BedrockAttachable.Builder builder) {
+        public BedrockAttachable.Builder applyToAttachable(BedrockAttachable.Builder builder, String targetPrefix) {
             return builder
-                    .withTexture(VanillaAttachableTargets.DEFAULT, stitched.destination().getPath());
+                    .withTexture(targetPrefix + VanillaAttachableTargets.DEFAULT, stitched.destination().getPath());
         }
 
         @Override

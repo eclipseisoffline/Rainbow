@@ -12,6 +12,7 @@ import org.geysermc.rainbow.mapping.PackSerializer;
 import org.geysermc.rainbow.mapping.PackSerializingContext;
 import org.geysermc.rainbow.mapping.geometry.BedrockGeometryContext;
 import org.geysermc.rainbow.mapping.geometry.MappedGeometry;
+import org.geysermc.rainbow.mapping.rendercontroller.BedrockRenderControllerContext;
 import org.geysermc.rainbow.mapping.texture.ModelTextures;
 import org.geysermc.rainbow.mapping.texture.TextureHolder;
 import org.geysermc.rainbow.pack.PackPaths;
@@ -40,7 +41,8 @@ public record BedrockAttachableContext(Optional<BedrockAttachable> attachable, O
                 .save(context);
     }
 
-    public static BedrockAttachableContext createSingleModel(Identifier identifier, ItemStackTemplate stack, BedrockGeometryContext geometryContext, ModelTextures textures, PackContext context) {
+    public static BedrockAttachableContext createSingleModel(Identifier identifier, ItemStackTemplate stack, BedrockGeometryContext geometryContext,
+                                                             ModelTextures textures, BedrockRenderControllerContext renderControllerContext, PackContext context) {
         // Prefer equippable over animation or geometry attachable, since when an item is equippable, it shows its 2D icon in first and third person (see notes in AnimationMapper)
         Equippable equippable = stack.get(DataComponents.EQUIPPABLE);
         if (equippable != null) {
@@ -73,6 +75,7 @@ public record BedrockAttachableContext(Optional<BedrockAttachable> attachable, O
                 attachable.withScript("animate", "third_person", "context.is_first_person == 0.0 && (context.item_slot == 'main_hand' || context.item_slot == 'off_hand')");
                 attachable.withScript("animate", "head", "context.is_first_person == 0.0 && context.item_slot == 'head'");
             });
+            attachable.withRenderController(renderControllerContext.identifier());
             return new BedrockAttachableContext(attachable.build());
         }
         return EMPTY;

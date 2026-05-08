@@ -55,6 +55,7 @@ import org.geysermc.rainbow.definition.predicate.GeyserMatchPredicate;
 import org.geysermc.rainbow.definition.predicate.GeyserPredicate;
 import org.geysermc.rainbow.definition.predicate.GeyserRangeDispatchPredicate;
 import org.geysermc.rainbow.mapping.geometry.ModelContext;
+import org.geysermc.rainbow.mapping.rendercontroller.BedrockRenderControllerContext;
 import org.geysermc.rainbow.mapping.texture.ModelTextures;
 import org.geysermc.rainbow.mixin.LateBoundIdMapperAccessor;
 import org.geysermc.rainbow.mixin.RangeSelectItemModelAccessor;
@@ -267,7 +268,8 @@ public class BedrockItemMapper {
         public void map(CuboidItemModelWrapper.Unbaked model) {
             mapBase(model, false)
                     .ifPresentOrElse(base -> {
-                        BedrockAttachableContext attachable = BedrockAttachableContext.createSingleModel(base.bedrockIdentifier, itemStack, base.geometry, base.textures, packContext);
+                        BedrockRenderControllerContext renderController = packContext.renderControllerCache().map(base.textures, base.geometry);
+                        BedrockAttachableContext attachable = BedrockAttachableContext.createSingleModel(base.bedrockIdentifier, itemStack, base.geometry, base.textures, renderController, packContext);
 
                         if (packContext.reportSuccesses()) {
                             // Not a problem, but just report to get the model printed in the report file
@@ -278,7 +280,7 @@ public class BedrockItemMapper {
         }
 
         public void map(RangeSelectItemModel.Unbaked model, UseDuration durationProperty) {
-            model.entries().stream()
+            List<Pair<BaseMapping, Float>> entries = model.entries().stream()
                     .sorted(RangeSelectItemModel.Entry.BY_THRESHOLD)
                     .flatMap(entry -> {
                         if (entry.model() instanceof CuboidItemModelWrapper.Unbaked wrapper) {
@@ -286,9 +288,10 @@ public class BedrockItemMapper {
                             // Requiring attachable here because we will always use an attachable to set up the use duration switching
                             return mapBase(wrapper, true).stream().map(base -> Pair.of(base, entry.threshold()));
                         }
+                        // TODO report
                         return Stream.empty();
                     })
-                    .map(entry -> {});
+                    .toList();
         }
 
         private void create(Identifier bedrockIdentifier, ModelTextures textures, BedrockGeometryContext geometry, BedrockAttachableContext attachable) {
