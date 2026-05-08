@@ -48,8 +48,11 @@ public interface ModelTextures extends PackAssetCache.Cacheable<ModelTextures>, 
 
     default BedrockAttachable.Builder applyToAttachable(BedrockAttachable.Builder builder) {
         return builder
-                .withTexture(BedrockAttachable.DisplaySlot.DEFAULT, icon().getPath())
-                .withRenderController(VanillaRenderControllers.ITEM_DEFAULT);
+                .withTexture(BedrockAttachable.DisplaySlot.DEFAULT, icon().getPath());
+    }
+
+    default Optional<RenderControllerConfiguration> renderControllerConfiguration() {
+        return Optional.empty();
     }
 
     @Override
@@ -61,6 +64,8 @@ public interface ModelTextures extends PackAssetCache.Cacheable<ModelTextures>, 
     }
 
     record SpriteInfo(int x, int y, int width, int height) {}
+
+    record RenderControllerConfiguration(List<String> textures, String defaultTexture) {}
 
     static ModelTextures load(ItemStackTemplate stack, ResolvedModel model, PackContext context) {
         Map<String, Material> materials = new HashMap<>(((TextureSlotsAccessor) model.getTopTextureSlots()).getResolvedValues());
@@ -162,11 +167,11 @@ public interface ModelTextures extends PackAssetCache.Cacheable<ModelTextures>, 
         }
     }
 
-    record SingleTexture(SpriteInfo sprite, Identifier texture, ExtractedAnimationInfo animation, TextureHolder iconTexture, boolean flatBuiltinModel) implements ModelTextures {
+    record SingleTexture(SpriteInfo sprite, Identifier texture, Optional<TextureResource.AnimationInfo> animation,
+                         TextureHolder iconTexture, boolean flatBuiltinModel) implements ModelTextures {
 
         public SingleTexture(Identifier texture, TextureResource openedTexture, TextureHolder icon, boolean flatBuiltinModel) {
-            this(new SpriteInfo(0, 0, openedTexture.sizeOfFrame().width(), openedTexture.sizeOfFrame().height()), texture,
-                    new ExtractedAnimationInfo(openedTexture.totalFrameCount(), openedTexture.frameReferenceCount()), icon, flatBuiltinModel);
+            this(new SpriteInfo(0, 0, openedTexture.sizeOfFrame().width(), openedTexture.sizeOfFrame().height()), texture, openedTexture.animation(), icon, flatBuiltinModel);
         }
 
         @Override
@@ -186,69 +191,74 @@ public interface ModelTextures extends PackAssetCache.Cacheable<ModelTextures>, 
 
         @Override
         public Identifier icon() {
-            return animation.references == 1 && flatBuiltinModel ? texture : iconTexture.destination();
+            return animation.isEmpty() && flatBuiltinModel ? texture : iconTexture.destination();
         }
 
         @Override
         public boolean requiresAttachable() {
-            return animation.references > 1;
+            return animation.isPresent();
         }
 
         @Override
         public BedrockAttachable.Builder applyToAttachable(BedrockAttachable.Builder builder) {
-            if (animation.references > 1) {
-                builder.withRenderController(getRenderControllerIdentifier());
-                for (int frame = 0; frame < animation.frames; frame++) {
+            if (animation.isPresent()) {
+                for (int frame = 0; frame < animation.get().totalFrameCount(); frame++) {
                     builder.withTexture("frame_" + frame, getFrameIdentifier(frame).getPath());
                 }
                 return builder;
             } else if (!flatBuiltinModel) {
                 // Not flat built-in, so modify attachable similar to StitchedTextures
-                return builder
-                        .withTexture(BedrockAttachable.DisplaySlot.DEFAULT, ModelTextures.getStitchedIdentifier(texture).getPath())
-                        .withRenderController(VanillaRenderControllers.ITEM_DEFAULT);
+                return builder.withTexture(BedrockAttachable.DisplaySlot.DEFAULT, ModelTextures.getStitchedIdentifier(texture).getPath());
             }
             return ModelTextures.super.applyToAttachable(builder);
         }
 
         @Override
+        public Optional<RenderControllerConfiguration> renderControllerConfiguration() {
+            return animation
+                    .map(info -> new RenderControllerConfiguration(createTextureReferenceArray(info), createTextureRenderProperty(info.frameReferenceCount())))
+                    .or(ModelTextures.super::renderControllerConfiguration);
+        }
+
+        @Override
         public CompletableFuture<?> save(PackSerializingContext context) {
-            // If no animation, just save the texture
-            if (animation.references == 1) {
+            //noinspection rawtypes - generic bs
+            return animation.<CompletableFuture>map(info -> {
+                // Texture must exist at this point, else a missing texture would've been returned by the load function
+                try (TextureResource openedTexture = context.assetResolver().getPossibleAtlasTextureSafely(texture).orElseThrow()) {
+                    PackSerializer.Serializable serializableStack = iconTexture;
+
+                    for (int frame = 0; frame < info.totalFrameCount(); frame++) {
+                        int i = frame;
+                        serializableStack = serializableStack.with(TextureHolder.createCustom(getFrameIdentifier(frame), () -> openedTexture.getFrame(i)));
+                    }
+
+                    serializableStack = serializableStack.with(PackSerializer.Serializable.wrapCodec(BedrockRenderControllers.CODEC, createRenderController(info),
+                            paths -> paths.renderControllersPath(getRenderControllerIdentifier())));
+                    return serializableStack.save(context);
+                }
+            }).orElseGet(() -> {
+                // If no animation, just save the texture
                 // Save just the texture (usually layer0) when flat builtin, else save texture and custom icon
                 if (flatBuiltinModel) {
                     return TextureHolder.createBuiltIn(texture).save(context);
                 }
                 // Else, save icon and texture with _stitched suffix
                 return iconTexture.with(TextureHolder.createBuiltIn(ModelTextures.getStitchedIdentifier(texture), texture)).save(context);
-            }
-
-            // Texture must exist at this point, else a missing texture would've been returned by the load function
-            try (TextureResource openedTexture = context.assetResolver().getPossibleAtlasTextureSafely(texture).orElseThrow()) {
-                PackSerializer.Serializable serializableStack = iconTexture;
-
-                for (int frame = 0; frame < animation.frames; frame++) {
-                    int i = frame;
-                    serializableStack = serializableStack.with(TextureHolder.createCustom(getFrameIdentifier(frame), () -> openedTexture.getFrame(i)));
-                }
-
-                serializableStack = serializableStack.with(PackSerializer.Serializable.wrapCodec(BedrockRenderControllers.CODEC, createRenderController(openedTexture),
-                        paths -> paths.renderControllersPath(getRenderControllerIdentifier())));
-                return serializableStack.save(context);
-            }
+            });
         }
 
         private Identifier getFrameIdentifier(int index) {
             return texture.withSuffix("_" + index);
         }
 
-        private BedrockRenderControllers createRenderController(TextureResource texture) {
-            List<String> textureReferences = createTextureReferenceArray(texture);
+        private BedrockRenderControllers createRenderController(TextureResource.AnimationInfo animation) {
+            List<String> textureReferences = createTextureReferenceArray(animation);
             return BedrockRenderControllers.builder()
                     .withRenderController(getRenderControllerIdentifier(), BedrockRenderControllers.renderController("Geometry.default")
                             .withArray(BedrockRenderControllers.RenderProperty.TEXTURES, "Array.frames", textureReferences)
                             .withRenderProperty(BedrockRenderControllers.RenderProperty.MATERIALS, BedrockRenderControllers.DEFAULT_MATERIAL)
-                            .withRenderProperty(BedrockRenderControllers.RenderProperty.TEXTURES, createTextureRenderProperty(textureReferences.size())))
+                            .withRenderProperty(BedrockRenderControllers.RenderProperty.TEXTURES, List.of(createTextureRenderProperty(textureReferences.size()), "Texture.enchanted")))
                     .build();
         }
 
@@ -256,23 +266,20 @@ public interface ModelTextures extends PackAssetCache.Cacheable<ModelTextures>, 
             return BedrockRenderControllers.formatRenderControllerName(Rainbow.bedrockSafeIdentifier(iconTexture.destination()));
         }
 
-        private static List<String> createTextureReferenceArray(TextureResource texture) {
+        private static List<String> createTextureReferenceArray(TextureResource.AnimationInfo animation) {
             List<String> textures = new ArrayList<>();
-            for (int frame = 0; frame < texture.frameReferenceCount(); frame++) {
-                TextureResource.FrameInfo frameInfo = texture.getFrameInfo(frame);
+            for (TextureResource.FrameInfo frame : animation.frames()) {
                 // Very poor implementation of the time component, just repeat the frame for however many ticks
-                for (int i = 0; i < frameInfo.time(); i++) {
-                    textures.add("Texture.frame_" + frameInfo.index());
+                for (int i = 0; i < frame.time(); i++) {
+                    textures.add("Texture.frame_" + frame.index());
                 }
             }
             return Collections.unmodifiableList(textures);
         }
 
-        private static List<String> createTextureRenderProperty(int frames) {
-            return List.of("Array.frames[math.mod(math.floor(q.life_time * 20.0), %d)]".formatted(frames), "Texture.enchanted");
+        private static String createTextureRenderProperty(int frames) {
+            return "Array.frames[math.mod(math.floor(q.life_time * 20.0), %d)]".formatted(frames);
         }
-
-        private record ExtractedAnimationInfo(int frames, int references) {}
     }
 
     record StitchedTextures(Map<String, SpriteInfo> sprites, TextureHolder stitched, int width, int height, TextureHolder iconTexture) implements ModelTextures {
@@ -302,8 +309,7 @@ public interface ModelTextures extends PackAssetCache.Cacheable<ModelTextures>, 
         @Override
         public BedrockAttachable.Builder applyToAttachable(BedrockAttachable.Builder builder) {
             return builder
-                    .withTexture(BedrockAttachable.DisplaySlot.DEFAULT, stitched.destination().getPath())
-                    .withRenderController(VanillaRenderControllers.ITEM_DEFAULT);
+                    .withTexture(BedrockAttachable.DisplaySlot.DEFAULT, stitched.destination().getPath());
         }
 
         @Override
