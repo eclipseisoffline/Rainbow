@@ -9,7 +9,6 @@ import com.mojang.serialization.codecs.RecordCodecBuilder;
 import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
 import net.minecraft.resources.Identifier;
 import net.minecraft.util.ExtraCodecs;
-import net.minecraft.util.StringRepresentable;
 import net.minecraft.world.entity.EquipmentSlot;
 import org.geysermc.rainbow.PackConstants;
 import org.geysermc.rainbow.pack.BedrockTextures;
@@ -19,8 +18,6 @@ import org.geysermc.rainbow.pack.geometry.VanillaGeometries;
 import org.geysermc.rainbow.pack.rendercontroller.VanillaRenderControllers;
 
 import java.util.ArrayList;
-import java.util.EnumMap;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -48,11 +45,11 @@ public record BedrockAttachable(BedrockVersion formatVersion, AttachableInfo inf
             default -> "";
         };
         Builder builder = builder(identifier)
-                .withMaterial(DisplaySlot.DEFAULT, glider ? VanillaMaterials.ELYTRA : VanillaMaterials.ARMOR)
-                .withMaterial(DisplaySlot.ENCHANTED, glider ? VanillaMaterials.ELYTRA_GLINT : VanillaMaterials.ARMOR_ENCHANTED)
-                .withTexture(DisplaySlot.DEFAULT, texture)
-                .withTexture(DisplaySlot.ENCHANTED, VanillaTextures.ENCHANTED_ACTOR_GLINT)
-                .withGeometry(DisplaySlot.DEFAULT, Objects.requireNonNull(VanillaGeometries.fromEquipmentSlot(slot, glider)))
+                .withMaterial(VanillaAttachableTargets.DEFAULT, glider ? VanillaMaterials.ELYTRA : VanillaMaterials.ARMOR)
+                .withMaterial(VanillaAttachableTargets.ENCHANTED, glider ? VanillaMaterials.ELYTRA_GLINT : VanillaMaterials.ARMOR_ENCHANTED)
+                .withTexture(VanillaAttachableTargets.DEFAULT, texture)
+                .withTexture(VanillaAttachableTargets.ENCHANTED, VanillaTextures.ENCHANTED_ACTOR_GLINT)
+                .withGeometry(VanillaAttachableTargets.DEFAULT, Objects.requireNonNull(VanillaGeometries.fromEquipmentSlot(slot, glider)))
                 .withScript("parent_setup", script)
                 .withRenderController(VanillaRenderControllers.ARMOR);
 
@@ -70,32 +67,28 @@ public record BedrockAttachable(BedrockVersion formatVersion, AttachableInfo inf
 
     public static BedrockAttachable.Builder geometry(Identifier identifier, String geometry) {
         return builder(identifier)
-                .withMaterial(DisplaySlot.DEFAULT, VanillaMaterials.ENTITY_ALPHATEST)
-                .withMaterial(DisplaySlot.ENCHANTED, VanillaMaterials.ENTITY_ALPHATEST_GLINT)
-                .withTexture(DisplaySlot.ENCHANTED, VanillaTextures.ENCHANTED_ITEM_GLINT)
-                .withGeometry(DisplaySlot.DEFAULT, geometry);
+                .withMaterial(VanillaAttachableTargets.DEFAULT, VanillaMaterials.ENTITY_ALPHATEST)
+                .withMaterial(VanillaAttachableTargets.ENCHANTED, VanillaMaterials.ENTITY_ALPHATEST_GLINT)
+                .withTexture(VanillaAttachableTargets.ENCHANTED, VanillaTextures.ENCHANTED_ITEM_GLINT)
+                .withGeometry(VanillaAttachableTargets.DEFAULT, geometry);
     }
 
     public static class Builder {
         private final Identifier identifier;
-        private final EnumMap<DisplaySlot, String> materials = new EnumMap<>(DisplaySlot.class);
+        private final Map<String, String> materials = new Object2ObjectOpenHashMap<>();
         private final Map<String, String> textures = new Object2ObjectOpenHashMap<>();
-        private final EnumMap<DisplaySlot, String> geometries = new EnumMap<>(DisplaySlot.class);
-        private final Map<String, String> animations = new HashMap<>();
-        private final Map<String, List<Script>> scripts = new HashMap<>();
+        private final Map<String, String> geometries = new Object2ObjectOpenHashMap<>();
+        private final Map<String, String> animations = new Object2ObjectOpenHashMap<>();
+        private final Map<String, List<Script>> scripts = new Object2ObjectOpenHashMap<>();
         private final List<String> renderControllers = new ArrayList<>();
 
         public Builder(Identifier identifier) {
             this.identifier = identifier;
         }
 
-        public Builder withMaterial(DisplaySlot slot, String material) {
+        public Builder withMaterial(String slot, String material) {
             materials.put(slot, material);
             return this;
-        }
-
-        public Builder withTexture(DisplaySlot slot, String texture) {
-            return withTexture(slot.name, texture);
         }
 
         public Builder withTexture(String slot, String texture) {
@@ -103,8 +96,8 @@ public record BedrockAttachable(BedrockVersion formatVersion, AttachableInfo inf
             return this;
         }
 
-        public Builder withGeometry(DisplaySlot slot, String geometry) {
-            geometries.put(slot, geometry);
+        public Builder withGeometry(String target, String geometry) {
+            geometries.put(target, geometry);
             return this;
         }
 
@@ -137,56 +130,26 @@ public record BedrockAttachable(BedrockVersion formatVersion, AttachableInfo inf
 
         public BedrockAttachable build() {
             return new BedrockAttachable(PackConstants.ENGINE_VERSION,
-                    new AttachableInfo(identifier, verifyDefault(materials), Map.copyOf(textures), verifyDefault(geometries), Map.copyOf(animations),
+                    new AttachableInfo(identifier, Map.copyOf(materials), Map.copyOf(textures), Map.copyOf(geometries), Map.copyOf(animations),
                             new Scripts(Map.copyOf(scripts)), List.copyOf(renderControllers)));
-        }
-
-        private static DisplayMap verifyDefault(EnumMap<DisplaySlot, String> map) {
-            if (!map.containsKey(DisplaySlot.DEFAULT)) {
-                throw new IllegalStateException("DisplayMap must have a default key");
-            }
-            return new DisplayMap(Map.copyOf(map));
         }
     }
 
-    public record AttachableInfo(Identifier identifier, DisplayMap materials, Map<String, String> textures,
-                                 DisplayMap geometry, Map<String, String> animations, Scripts scripts,
+    public record AttachableInfo(Identifier identifier, Map<String, String> materials, Map<String, String> textures,
+                                 Map<String, String> geometry, Map<String, String> animations, Scripts scripts,
                                  List<String> renderControllers) {
         private static final Codec<Map<String, String>> STRING_MAP_CODEC = Codec.unboundedMap(Codec.STRING, Codec.STRING);
         public static final Codec<AttachableInfo> CODEC = RecordCodecBuilder.create(instance ->
                 instance.group(
                         Identifier.CODEC.fieldOf("identifier").forGetter(AttachableInfo::identifier),
-                        DisplayMap.CODEC.fieldOf("materials").forGetter(AttachableInfo::materials),
+                        Codec.unboundedMap(Codec.STRING, Codec.STRING).fieldOf("materials").forGetter(AttachableInfo::materials),
                         Codec.unboundedMap(Codec.STRING, Codec.STRING).fieldOf("textures").forGetter(AttachableInfo::textures),
-                        DisplayMap.CODEC.fieldOf("geometry").forGetter(AttachableInfo::geometry),
+                        Codec.unboundedMap(Codec.STRING, Codec.STRING).fieldOf("geometry").forGetter(AttachableInfo::geometry),
                         STRING_MAP_CODEC.optionalFieldOf("animations", Map.of()).forGetter(AttachableInfo::animations),
                         Scripts.CODEC.optionalFieldOf("scripts", Scripts.EMPTY).forGetter(AttachableInfo::scripts),
                         Codec.STRING.listOf().optionalFieldOf("render_controllers", List.of()).forGetter(AttachableInfo::renderControllers)
                 ).apply(instance, AttachableInfo::new)
         );
-    }
-
-    public record DisplayMap(Map<DisplaySlot, String> map) {
-        public static final Codec<DisplayMap> CODEC = Codec.unboundedMap(DisplaySlot.CODEC, Codec.STRING)
-                .xmap(map -> map.isEmpty() ? new DisplayMap(new EnumMap<>(DisplaySlot.class)) : new DisplayMap(new EnumMap<>(map)), DisplayMap::map);
-    }
-
-    public enum DisplaySlot implements StringRepresentable {
-        DEFAULT("default"),
-        ENCHANTED("enchanted");
-
-        public static final Codec<DisplaySlot> CODEC = StringRepresentable.fromEnum(DisplaySlot::values);
-
-        private final String name;
-
-        DisplaySlot(String name) {
-            this.name = name;
-        }
-
-        @Override
-        public String getSerializedName() {
-            return name;
-        }
     }
 
     public record Scripts(Map<String, List<Script>> scripts) {

@@ -22,7 +22,7 @@ import org.geysermc.rainbow.mixin.SpriteContentsAccessor;
 import org.geysermc.rainbow.mixin.SpriteLoaderAccessor;
 import org.geysermc.rainbow.mixin.TextureSlotsAccessor;
 import org.geysermc.rainbow.pack.attachable.BedrockAttachable;
-import org.geysermc.rainbow.pack.rendercontroller.VanillaRenderControllers;
+import org.geysermc.rainbow.pack.attachable.VanillaAttachableTargets;
 import org.geysermc.rainbow.pack.rendercontroller.BedrockRenderControllers;
 
 import java.util.ArrayList;
@@ -48,7 +48,7 @@ public interface ModelTextures extends PackAssetCache.Cacheable<ModelTextures>, 
 
     default BedrockAttachable.Builder applyToAttachable(BedrockAttachable.Builder builder) {
         return builder
-                .withTexture(BedrockAttachable.DisplaySlot.DEFAULT, icon().getPath());
+                .withTexture(VanillaAttachableTargets.DEFAULT, icon().getPath());
     }
 
     default Optional<RenderControllerConfiguration> renderControllerConfiguration() {
@@ -208,7 +208,7 @@ public interface ModelTextures extends PackAssetCache.Cacheable<ModelTextures>, 
                 return builder;
             } else if (!flatBuiltinModel) {
                 // Not flat built-in, so modify attachable similar to StitchedTextures
-                return builder.withTexture(BedrockAttachable.DisplaySlot.DEFAULT, ModelTextures.getStitchedIdentifier(texture).getPath());
+                return builder.withTexture(VanillaAttachableTargets.DEFAULT, ModelTextures.getStitchedIdentifier(texture).getPath());
             }
             return ModelTextures.super.applyToAttachable(builder);
         }
@@ -309,7 +309,7 @@ public interface ModelTextures extends PackAssetCache.Cacheable<ModelTextures>, 
         @Override
         public BedrockAttachable.Builder applyToAttachable(BedrockAttachable.Builder builder) {
             return builder
-                    .withTexture(BedrockAttachable.DisplaySlot.DEFAULT, stitched.destination().getPath());
+                    .withTexture(VanillaAttachableTargets.DEFAULT, stitched.destination().getPath());
         }
 
         @Override
